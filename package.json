@@ -23,6 +23,7 @@
     "start": "vite",
     "dev:tsup": "tsup src/index.ts --watch",
     "build": "tsup",
+    "prepare": "npm run build",
     "test": "vitest",
     "lint": "tsc --noEmit --watch",
     "dev": "concurrently \"pnpm run lint\" \"pnpm run start\""
