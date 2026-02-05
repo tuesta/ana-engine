@@ -70,8 +70,13 @@ export type Hint
  | { type: "Attribute"; hint: string }
  | { type: "Primitive"; hint: BaseTypeWrapper }
 
-export type Result<L, R> = { type: "Err", value: L } | { type: "Ok", value: R }
-
-export type Either<L, R> = { type: "Left", value: L } | { type: "Right", value: R }
-
 export type InputErr = { expected: string, actual: string }
+
+export type Step
+ = { type: "InputEntry"; value: { inputEntry: InputEntry; nextHint: Hint } }
+ | { type: "InputErr"; value: InputErr }
+ | { type: "inputAccepted"; value: { input: string; nextHint: Hint } }
+
+export type StepRaw
+ = { type: "InputErr"; value: InputErr }
+ | { type: "inputAccepted"; value: string; }

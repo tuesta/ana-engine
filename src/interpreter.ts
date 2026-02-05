@@ -1,4 +1,4 @@
-import { InputEntry, AnaNode, Result, InputErr, Hint, isBaseTypeWrapper, PrimitiveTypeKey, Constraint, isIntString, Either } from './types.js';
+import { InputEntry, AnaNode, Hint, isBaseTypeWrapper, PrimitiveTypeKey, Constraint, isIntString, StepRaw, Step } from './types.js';
 
 export class Walker {
   private programRef: AnaNode;
@@ -7,7 +7,7 @@ export class Walker {
   private inputEntry: InputEntry | null;
   private attribute: string[];
 
-  constructor(pointer: AnaNode) {
+  private constructor(pointer: AnaNode) {
     this.programRef = pointer;
     this.pointer = pointer;
     this.inputEntry = null;
@@ -15,7 +15,24 @@ export class Walker {
     this.attribute = [];
   }
 
-  public hint(): Hint {
+  private setState(pointer: AnaNode) {
+    this.programRef = pointer;
+    this.pointer = pointer;
+    this.inputEntry = null;
+    this.inputEntryCPs = x => x;
+    this.attribute = [];
+  }
+
+  public static start(node: AnaNode): { walker: Walker, hint: Hint } {
+    const walker = new Walker(node);
+
+    return {
+      walker,
+      hint: walker.hint()
+    };
+  }
+
+  private hint(): Hint {
     switch (this.pointer.tag) {
         case "Sum":
             return { type: "Sum", hint: Object.keys(this.pointer.variants) };
@@ -29,19 +46,29 @@ export class Walker {
     }
   }
 
-  public step(input: any): Either<InputEntry, Result<InputErr, string>> {
-    console.log(this.inputEntry)
-    if (this.inputEntry !== null) {
-      const result = this.inputEntry
-      this.inputEntry = null
-      this.pointer = this.programRef
-      return { type: "Left", value: result }
-    }
+  private isInputEntry(): InputEntry | null {
+    if (this.inputEntry === null || this.attribute.length !== 0) return null;
 
+    const result = this.inputEntry
+    this.setState(this.programRef)
+
+    return result;
+  }
+
+  public step(input: any): Step {
     const result = this.go(input)
     this.innerRecord()
 
-    return { type: "Right", value: result };
+    switch (result.type) {
+      case "InputErr":
+        return { type: "InputErr", value: result.value };
+      case "inputAccepted":
+        const inputEntry = this.isInputEntry()
+        if (inputEntry) {
+          return { type: "InputEntry", value: { inputEntry, nextHint: this.hint() } }
+        }
+        return { type: "inputAccepted", value: { input: result.value, nextHint: this.hint() } };
+    }
   }
 
   private innerRecord() {
@@ -83,33 +110,32 @@ export class Walker {
     this.innerRecord()
   }
 
-  private go(input: string): Result<InputErr, string> {
+  private go(input: string): StepRaw {
     switch (this.pointer.tag) {
       case "Tag": {
         if (input !== this.pointer.name) {
-          return { type: "Err", value: { expected: `"${this.pointer.name}"`, actual: input } }
+          return { type: "InputErr", value: { expected: `"${this.pointer.name}"`, actual: input } }
         }
 
         const fatherCPs = this.inputEntryCPs
         this.inputEntryCPs = x => fatherCPs({ tag: "tag", identifier: input, value: x })
         this.pointer = this.pointer.value;
-        return { type: "Ok", value: input };
+        return { type: "inputAccepted", value: input }
       }
       case "Sum": {
         const variants = Object.keys(this.pointer.variants)
         if (!variants.includes(input)) {
-          return { type: "Err", value: { expected: `"${variants.join(" | ")}"`, actual: input } }
+          return { type: "InputErr", value: { expected: `"${variants.join(" | ")}"`, actual: input } }
         }
 
         const fatherCPs = this.inputEntryCPs
         this.inputEntryCPs = x => fatherCPs({ tag: "tag", identifier: input, value: x })
         this.pointer = this.pointer.variants[input];
-        return { type: "Ok", value: input };
+        return { type: "inputAccepted", value: input };
       }
       case "Record": {
         // Match BaseType -> "Int" | "String" Constraint
         if (isBaseTypeWrapper(this.pointer.fields)) {
-          console.log("hola")
           // TODO constraints
           const [[primitiveType, _constraints]] = Object.entries(this.pointer.fields) as [PrimitiveTypeKey, Constraint][]
 
@@ -117,14 +143,13 @@ export class Walker {
             case "Int":
               if (isIntString(input)) {
                 this.inputEntry = this.inputEntryCPs({ tag: "primitive", value: Number(input) })
-                return { type: "Ok", value: input }
+                return { type: "inputAccepted", value: input }
               } else {
-                return { type: "Err", value: { expected: "Int", actual: input } }
+                return { type: "InputErr", value: { expected: "Int", actual: input } }
               }
             case "String":
               this.inputEntry = this.inputEntryCPs({ tag: "primitive", value: input })
-              console.log(this.inputEntry)
-              return { type: "Ok", value: input }
+              return { type: "inputAccepted", value: input }
           }
         } else {
           this.innerRecord();
