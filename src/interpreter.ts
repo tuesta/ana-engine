@@ -7,6 +7,10 @@ export class Walker {
   private inputEntry: InputEntry | null;
   private attribute: string[];
 
+  get pointerJSON() {
+    return this.pointer;
+  }
+
   private constructor(pointer: AnaNode) {
     this.programRef = pointer;
     this.pointer = pointer;
@@ -136,20 +140,23 @@ export class Walker {
       case "Record": {
         // Match BaseType -> "Int" | "String" Constraint
         if (isBaseTypeWrapper(this.pointer.fields)) {
-          // TODO constraints
-          const [[primitiveType, _constraints]] = Object.entries(this.pointer.fields) as [PrimitiveTypeKey, Constraint][]
+          const [[primitiveType, constraints]] = Object.entries(this.pointer.fields) as [PrimitiveTypeKey, Constraint][]
 
           switch (primitiveType) {
             case "Int":
-              if (isIntString(input)) {
+              if (isIntString(input) && this.handleConstraint(Number(input), constraints)) {
                 this.inputEntry = this.inputEntryCPs({ tag: "primitive", value: Number(input) })
                 return { type: "inputAccepted", value: input }
               } else {
-                return { type: "InputErr", value: { expected: "Int", actual: input } }
+                return { type: "InputErr", value: { expected: this.constraintMessage(primitiveType, constraints), actual: input } }
               }
             case "String":
-              this.inputEntry = this.inputEntryCPs({ tag: "primitive", value: input })
-              return { type: "inputAccepted", value: input }
+              if (this.handleConstraint(input, constraints)) {
+                this.inputEntry = this.inputEntryCPs({ tag: "primitive", value: input })
+                return { type: "inputAccepted", value: input }
+              } else {
+                return { type: "InputErr", value: { expected: this.constraintMessage(primitiveType, constraints), actual: input } }
+              }
           }
         } else {
           this.innerRecord();
@@ -157,6 +164,24 @@ export class Walker {
         }
       }
 
+    }
+  }
+
+  private handleConstraint(input: any, constraints: Constraint): boolean {
+    switch (constraints.tag) {
+        case "All":
+            return true
+        case "OneOf":
+            return constraints.contents.filter(match => input === match).length > 0;
+    }
+  }
+
+  private constraintMessage(typeKey: PrimitiveTypeKey, constraints: Constraint): string {
+    switch (constraints.tag) {
+        case "All":
+            return typeKey
+        case "OneOf":
+            return constraints.contents.join(" | ")
     }
   }
 }
