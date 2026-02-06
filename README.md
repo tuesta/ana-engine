@@ -1,0 +1,1 @@
+Este es el intérprete del DSL Ana. Para una explicación detallada de la arquitectura, la gramática y las leyes de normalización, consultar el README principal en [unihask](https://gitlab.com/tuesta/unihask).
